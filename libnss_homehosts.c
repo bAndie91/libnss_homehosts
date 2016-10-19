@@ -91,15 +91,21 @@ enum nss_status homehosts_gethostent_r(
 	FILE *fh;
 	long aliases_offset;
 	char homehosts_file[PATH_MAX+1];
-	char ipbuf[INET6_ADDRSTRLEN];
+	char ipbuf[INET6_ADDRSTRLEN+1];
 	char namebuf[_POSIX_HOST_NAME_MAX+1];
 	char nlbuf[2];		// holds a newline char
+	char ffmt_ip[7];	// fscanf format string
+	char ffmt_name[12];	// fscanf format string
 	char *c;
 	int cnt, acnt, tokens;
 	bool store_aliases_phase, ipaddr_found = FALSE;
 	
 	
+	sprintf(ffmt_ip, "%%%us%%1[\n]", INET6_ADDRSTRLEN); // generates: %46s%1[\n]
+	sprintf(ffmt_name, "%%%us%%1[\n]", _POSIX_HOST_NAME_MAX); // generates: %255s%1[\n]
+	
 	#ifdef DEBUG
+	warnx("%s(%s, ...)", __func__, query_name);
 	warnx("host.conf: inited = %u, flags = %u, multi = %u", _res_hconf.initialized, _res_hconf.flags, (_res_hconf.flags & HCONF_FLAG_MULTI)!=0);
 	memset(buffer, ' ', buflen);
 	#endif
@@ -134,7 +140,8 @@ enum nss_status homehosts_gethostent_r(
 	acnt = 0;	// Count resulting alias names
 	while(!feof(fh))
 	{
-		if(fscanf(fh, "%s", (char*)&ipbuf) == 1)
+		tokens = fscanf(fh, ffmt_ip /* "%46s%1[\n]" */, ipbuf, nlbuf);
+		if(tokens > 0)
 		{
 			if(ipbuf[0] == '#')
 			{
@@ -159,13 +166,37 @@ enum nss_status homehosts_gethostent_r(
 				}
 				else
 				{
-					seek_line(fh);
+					if(tokens <= 1)
+					{
+						seek_line(fh);
+					}
 					continue;
 				}
 			}
 			
+			if(tokens <= 1)
+			{
+				/* eat whitespaces after ip address */
+				fscanf(fh, "%*[ \f\r\t\v]");
+				/* scan for newline, if found then treat like it was found earlier at fscanf(fh, ffmt_ip, ...) */
+				if(fscanf(fh, "%1[\n]", nlbuf) == 1) tokens = 2;
+			}
+			if(tokens > 1)
+			{
+				/* Encountered a newline right after the IP address */
+				if(ipaddr_found && result->h_name == NULL)
+				{
+					/* Store an empty hostname */
+					*(char*)(buffer+idx) = '\0';
+					result->h_name = buffer+idx;
+					idx += 1;
+					ALIGN(idx);
+				}
+				continue;
+			}
+			
 			read_hostname:
-			tokens = fscanf(fh, "%s%1[\n]", namebuf, nlbuf);
+			tokens = fscanf(fh, ffmt_name /* "%255s%1[\n]" */, namebuf, nlbuf);
 			if(tokens > 0)
 			{
 				#ifdef DEBUG
@@ -179,7 +210,7 @@ enum nss_status homehosts_gethostent_r(
 					/* Treat as we saw newline */
 					tokens = 2;
 					/* Seek to the next line */
-					fscanf(fh, "%*[^\n]%*[\n]");
+					seek_line(fh);
 				}
 				
 				if(store_aliases_phase)
@@ -202,6 +233,7 @@ enum nss_status homehosts_gethostent_r(
 								fclose(fh);
 								goto buffer_error;
 							}
+							/* Store this alias name at the end of buffer */
 							strcpy(buffer+ridx-strlen(namebuf)-1, namebuf);
 							ridx += -strlen(namebuf)-1;
 						}
@@ -238,10 +270,12 @@ enum nss_status homehosts_gethostent_r(
 			{
 				/* Encountered a newline */
 				if(cnt > 0 && (ipaddr_found || (_res_hconf.flags & HCONF_FLAG_MULTI)==0))
+				{
 					/* Do not continue line reading,
 					   because either address is found or
-					   hostname is found and 'multi off' in host.conf */
+					   hostname is found and 'multi off' is in host.conf */
 					break;
+				}
 				continue;
 			}
 			
@@ -253,6 +287,7 @@ enum nss_status homehosts_gethostent_r(
 	if(cnt == 0)
 	{
 		*h_errnop = NO_ADDRESS;
+		*result_p = NULL;
 		return NSS_STATUS_NOTFOUND;
 	}
 	
