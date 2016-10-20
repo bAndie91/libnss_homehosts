@@ -61,6 +61,22 @@ void seek_line(FILE* fh)
 	/* Seeks to the beginning of next non-empty line on a file. */
 	fscanf(fh, "%*[^\n]%*[\n]");
 }
+int fscanfw(FILE* fh, const char* ffmt, char* buf)
+{
+	int tokens;
+	char nlbuf[2];		// holds a newline char
+	tokens = fscanf(fh, ffmt, buf, nlbuf);
+	if(tokens == 1)
+	{
+		/* eat non-newline whitespaces */
+		fscanf(fh, "%*[ \f\r\t\v]");
+		/* scan for newline, if found then treat like it was found at first fscanf() */
+		if(fscanf(fh, "%1[\n]", nlbuf) == 1)
+			tokens = 2;
+	}
+	return tokens;
+}
+
 
 #ifdef DEBUG
 void dumpbuffer(unsigned char* buf, size_t len)
@@ -93,7 +109,6 @@ enum nss_status homehosts_gethostent_r(
 	char homehosts_file[PATH_MAX+1];
 	char ipbuf[INET6_ADDRSTRLEN+1];
 	char namebuf[_POSIX_HOST_NAME_MAX+1];
-	char nlbuf[2];		// holds a newline char
 	char ffmt_ip[7];	// fscanf format string
 	char ffmt_name[12];	// fscanf format string
 	char *c;
@@ -140,7 +155,7 @@ enum nss_status homehosts_gethostent_r(
 	acnt = 0;	// Count resulting alias names
 	while(!feof(fh))
 	{
-		tokens = fscanf(fh, ffmt_ip /* "%46s%1[\n]" */, ipbuf, nlbuf);
+		tokens = fscanfw(fh, ffmt_ip /* "%46s%1[\n]" */, ipbuf);
 		if(tokens > 0)
 		{
 			if(ipbuf[0] == '#')
@@ -174,13 +189,6 @@ enum nss_status homehosts_gethostent_r(
 				}
 			}
 			
-			if(tokens <= 1)
-			{
-				/* eat whitespaces after ip address */
-				fscanf(fh, "%*[ \f\r\t\v]");
-				/* scan for newline, if found then treat like it was found earlier at fscanf(fh, ffmt_ip, ...) */
-				if(fscanf(fh, "%1[\n]", nlbuf) == 1) tokens = 2;
-			}
 			if(tokens > 1)
 			{
 				/* Encountered a newline right after the IP address */
@@ -196,7 +204,7 @@ enum nss_status homehosts_gethostent_r(
 			}
 			
 			read_hostname:
-			tokens = fscanf(fh, ffmt_name /* "%255s%1[\n]" */, namebuf, nlbuf);
+			tokens = fscanfw(fh, ffmt_name /* "%255s%1[\n]" */, namebuf);
 			if(tokens > 0)
 			{
 				#ifdef DEBUG
