@@ -30,11 +30,18 @@ typedef int bool;
 
 #define AFLEN(af) (((af) == AF_INET6) ? sizeof(struct in6_addr) : sizeof(struct in_addr))
 
+#define OPEN_HOME_HOSTS(fh) do { \
+	c = getenv("HOME"); \
+	cnt = snprintf(homehosts_file, PATH_MAX, "%s/.hosts", c); \
+	if(cnt >= PATH_MAX) goto soft_error; \
+	fh = fopen(homehosts_file, "r"); \
+	if(fh == NULL) goto soft_error; \
+} while(0)
 
-int parseIpStr(const char *str, struct ipaddr *addr)
+
+bool parseIpStr(const char *str, struct ipaddr *addr)
 {
 	/* Convert string to IPv4/v6 address, or fail */
-	/* Return: 1 on success */
 	int ok;
 	
 	addr->af = AF_INET;
@@ -46,7 +53,7 @@ int parseIpStr(const char *str, struct ipaddr *addr)
 		ok = inet_pton(AF_INET6, str, &(addr->ip6));
 		if(ok == -1) perror("inet_pton");
 	}
-	return ok;
+	return ok == 1 ? TRUE : FALSE;
 }
 
 void* ipaddr_get_binary_addr(struct ipaddr *addr)
@@ -78,7 +85,7 @@ int fscanfw(FILE* fh, const char* ffmt, char* buf)
 }
 
 
-#ifdef DEBUG
+#ifdef WITH_DUMPBUFFER
 void dumpbuffer(unsigned char* buf, size_t len)
 {
 	unsigned char* p = buf;
@@ -95,6 +102,7 @@ void dumpbuffer(unsigned char* buf, size_t len)
 enum nss_status homehosts_gethostent_r(
 	const char *query_name,
 	const void *query_addr,
+	FILE* fh,
 	struct hostent * result,
 	char *buffer,
 	size_t buflen,
@@ -104,7 +112,6 @@ enum nss_status homehosts_gethostent_r(
 {
 	size_t idx, ridx, addrstart;		// cursors in buffer space
 	struct ipaddr address;
-	FILE *fh;
 	long aliases_offset;
 	char homehosts_file[PATH_MAX+1];
 	char ipbuf[INET6_ADDRSTRLEN+1];
@@ -114,6 +121,7 @@ enum nss_status homehosts_gethostent_r(
 	char *c;
 	int cnt, acnt, tokens;
 	bool store_aliases_phase, ipaddr_found = FALSE;
+	bool managed_fh = FALSE;
 	
 	
 	sprintf(ffmt_ip, "%%%us%%1[\n]", INET6_ADDRSTRLEN); // generates: %46s%1[\n]
@@ -127,10 +135,11 @@ enum nss_status homehosts_gethostent_r(
 	
 	/* Open hosts file */
 	
-	cnt = snprintf(homehosts_file, PATH_MAX, "%s/.hosts", getenv("HOME"));
-	if(cnt >= PATH_MAX) goto soft_error;
-	fh = fopen(homehosts_file, "r");
-	if(fh == NULL) goto soft_error;
+	if(fh == NULL)
+	{
+		managed_fh = TRUE;
+		OPEN_HOME_HOSTS(fh);
+	}
 	
 	/* Copy requested name to canonical hostname */
 	
@@ -146,8 +155,11 @@ enum nss_status homehosts_gethostent_r(
 	}
 	addrstart = idx;
 	
-	result->h_addrtype = query_af;
-	result->h_length = AFLEN(query_af);
+	if(query_af)
+	{
+		result->h_addrtype = query_af;
+		result->h_length = AFLEN(query_af);
+	}
 	
 	/* Read hosts file */
 	
@@ -167,12 +179,19 @@ enum nss_status homehosts_gethostent_r(
 			store_aliases_phase = FALSE;
 			aliases_offset = ftell(fh);
 			
-			if(query_addr != NULL)
+			if(query_addr != NULL || query_name == NULL)
 			{
-				if(parseIpStr(ipbuf, &address) == 1 
-				   && address.af == query_af 
-				   && memcmp(ipaddr_get_binary_addr(&address), query_addr /* TODO: use struct members */, result->h_length)==0)
+				/* if address was asked OR neither name nor address were asked */
+				if( parseIpStr(ipbuf, &address)
+				   && (query_af == 0 || address.af == query_af)
+				   && (query_addr == NULL || memcmp(ipaddr_get_binary_addr(&address), query_addr /* TODO: use struct members */, result->h_length)==0))
 				{
+					if(query_af == 0)
+					{
+						result->h_addrtype = address.af;
+						result->h_length = AFLEN(address.af);
+					}
+					
 					ipaddr_found = TRUE;
 					store_aliases_phase = TRUE;
 					cnt++;
@@ -200,6 +219,9 @@ enum nss_status homehosts_gethostent_r(
 					idx += 1;
 					ALIGN(idx);
 				}
+				if(ipaddr_found)
+					/* jump out if address was asked and it is found */
+					break;
 				continue;
 			}
 			
@@ -238,7 +260,7 @@ enum nss_status homehosts_gethostent_r(
 							acnt++;
 							if(idx + strlen(namebuf)+1 /* trailing NUL byte */ + (acnt+1) * sizeof(char*) /* pointers to alias names */ > ridx-1)
 							{
-								fclose(fh);
+								if(managed_fh) fclose(fh);
 								goto buffer_error;
 							}
 							/* Store this alias name at the end of buffer */
@@ -252,13 +274,13 @@ enum nss_status homehosts_gethostent_r(
 					if(strcasecmp(namebuf, query_name)==0)
 					{
 						/* hostname matches */
-						if(parseIpStr(ipbuf, &address) == 1 && address.af == query_af)
+						if(parseIpStr(ipbuf, &address) && address.af == query_af)
 						{
 							/* hostname matches and ip address is valid */
 							cnt++;
 							if(idx + result->h_length + (cnt+1) * sizeof(char*) > ridx-1)
 							{
-								fclose(fh);
+								if(managed_fh) fclose(fh);
 								goto buffer_error;
 							}
 							
@@ -281,7 +303,8 @@ enum nss_status homehosts_gethostent_r(
 				{
 					/* Do not continue line reading,
 					   because either address is found or
-					   hostname is found and 'multi off' is in host.conf */
+					   hostname is found and 'multi off' is in host.conf
+					*/
 					break;
 				}
 				continue;
@@ -290,7 +313,7 @@ enum nss_status homehosts_gethostent_r(
 			goto read_hostname;
 		}
 	}
-	fclose(fh);	
+	if(managed_fh) fclose(fh);	
 	
 	if(cnt == 0)
 	{
@@ -354,9 +377,9 @@ enum nss_status _nss_homehosts_gethostbyname_r(
 	int *h_errnop)
 {
 	enum nss_status found_ipv6;
-	found_ipv6 = homehosts_gethostent_r(name, NULL, result, buffer, buflen, result_p, h_errnop, AF_INET6);
+	found_ipv6 = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, result_p, h_errnop, AF_INET6);
 	if(found_ipv6 == NSS_STATUS_NOTFOUND)
-		return homehosts_gethostent_r(name, NULL, result, buffer, buflen, result_p, h_errnop, AF_INET);
+		return homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, result_p, h_errnop, AF_INET);
 	return found_ipv6;
 }
 
@@ -377,7 +400,7 @@ enum nss_status _nss_homehosts_gethostbyname2_r(
 	}
 	else
 	{
-		return homehosts_gethostent_r(name, NULL, result, buffer, buflen, result_p, h_errnop, af);
+		return homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, result_p, h_errnop, af);
 	}
 }
 
@@ -391,5 +414,50 @@ enum nss_status _nss_homehosts_gethostbyaddr_r(
 	struct hostent ** result_p,
 	int *h_errnop)
 {
-	return homehosts_gethostent_r(NULL, address, result, buffer, buflen, result_p, h_errnop, af);
+	return homehosts_gethostent_r(NULL, address, NULL, result, buffer, buflen, result_p, h_errnop, af);
 }
+
+
+static FILE* sethost_fh;
+
+enum nss_status _nss_homehosts_sethostent(void)
+{
+	char homehosts_file[PATH_MAX+1];
+	int cnt;
+	char *c;
+	
+	OPEN_HOME_HOSTS(sethost_fh);
+	return NSS_STATUS_SUCCESS;
+	
+	soft_error:
+	sethost_fh = NULL;
+	return NSS_STATUS_TRYAGAIN;
+}
+
+enum nss_status _nss_homehosts_gethostent_r(
+	struct hostent *result,
+	char *buffer,
+	size_t buflen,
+	int *errnop)
+{
+	if(sethost_fh == NULL)
+	{
+		*errnop = NO_RECOVERY;
+		return NSS_STATUS_UNAVAIL;
+	}
+	
+	struct hostent** result_p = &result;
+	int* h_errnop = errnop;
+	return homehosts_gethostent_r(NULL, NULL, sethost_fh, result, buffer, buflen, result_p, h_errnop, 0);
+}
+
+enum nss_status _nss_homehosts_endhostent(void)
+{
+	if(sethost_fh == NULL)
+	{
+		return NSS_STATUS_UNAVAIL;
+	}
+	fclose(sethost_fh);
+	return NSS_STATUS_SUCCESS;
+}
+
