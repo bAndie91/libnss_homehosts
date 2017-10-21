@@ -63,10 +63,10 @@ void* ipaddr_get_binary_addr(struct ipaddr *addr)
 	return NULL;
 }
 
-void seek_line(FILE* fh)
+int seek_line(FILE* fh)
 {
 	/* Seeks to the beginning of next non-empty line on a file. */
-	fscanf(fh, "%*[^\n]%*[\n]");
+	return fscanf(fh, "%*[^\n]%*[\n]");
 }
 int fscanfw(FILE* fh, const char* ffmt, char* buf)
 {
@@ -76,7 +76,10 @@ int fscanfw(FILE* fh, const char* ffmt, char* buf)
 	if(tokens == 1)
 	{
 		/* eat non-newline whitespaces */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
 		fscanf(fh, "%*[ \f\r\t\v]");
+#pragma GCC diagnostic pop
 		/* scan for newline, if found then treat like it was found at first fscanf() */
 		if(fscanf(fh, "%1[\n]", nlbuf) == 1)
 			tokens = 2;
@@ -116,7 +119,7 @@ enum nss_status homehosts_gethostent_r(
 	char homehosts_file[PATH_MAX+1];
 	char ipbuf[INET6_ADDRSTRLEN+1];
 	char namebuf[_POSIX_HOST_NAME_MAX+1];
-	char ffmt_ip[7];	// fscanf format string
+	char ffmt_ip[10];	// fscanf format string
 	char ffmt_name[12];	// fscanf format string
 	char *c;
 	int cnt, acnt, tokens;
