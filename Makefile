@@ -24,8 +24,12 @@ install: $(LIB_NAME)
 	rm -f $(INSTALL_FOLDER)/$(LIB_NAME_WITH_VERSION) $(LINK_FOLDER)/$(LIB_NAME)
 	ln -s $(LIB_NAME) $(INSTALL_FOLDER)/$(LIB_NAME_WITH_VERSION)
 	ln -s $(INSTALL_FOLDER)/$(LIB_NAME_WITH_VERSION) $(LINK_FOLDER)/$(LIB_NAME)
+	ldconfig
 .PHONY: uninstall
 uninstall:
 	rm -f $(INSTALL_FOLDER)/$(LIB_NAME)
 	rm -f $(INSTALL_FOLDER)/$(LIB_NAME_WITH_VERSION)
 	rm -f $(LINK_FOLDER)/$(LIB_NAME)
+.PHONY: test
+test:
+	getent hosts mark.net

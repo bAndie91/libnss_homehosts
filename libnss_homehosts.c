@@ -126,9 +126,9 @@ enum nss_status homehosts_gethostent_r(
 	bool store_aliases_phase, ipaddr_found = FALSE;
 	bool managed_fh = FALSE;
 	
-	
-	sprintf(ffmt_ip, "%%%us%%1[\n]", INET6_ADDRSTRLEN); // generates: %46s%1[\n]
-	sprintf(ffmt_name, "%%%us%%1[\n]", _POSIX_HOST_NAME_MAX); // generates: %255s%1[\n]
+
+	snprintf(ffmt_ip, sizeof(ffmt_ip), "%%%us%%1[\n]", INET6_ADDRSTRLEN); // generates: %46s%1[\n]
+	snprintf(ffmt_name, sizeof(ffmt_name), "%%%us%%1[\n]", _POSIX_HOST_NAME_MAX); // generates: %255s%1[\n]
 	
 	#ifdef DEBUG
 	warnx("%s(%s, ...)", __func__, query_name);
