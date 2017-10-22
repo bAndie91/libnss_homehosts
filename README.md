@@ -3,9 +3,13 @@ Linux NSS library supports `~/.hosts`, per user hosts resolution.
 
 # Install
 * Compile the code:
-    $ make
+```bash
+$ make
+```
 * Install the resulting library:
-    $ sudo make install
+```bash
+$ sudo make install
+```
 * Append NSS module to `/etc/nsswitch.conf`:
 ```text
 hosts: homehosts files dns
@@ -13,7 +17,9 @@ hosts: homehosts files dns
 
 # Uninstall
 * Uninstall the library:
-    $ sudo make uninstall
+```bash
+$ sudo make uninstall
+```
 * Remove the added module from `/etc/nsswitch.conf`.
 
 # Usage
@@ -22,7 +28,7 @@ hosts: homehosts files dns
 127.0.0.1  myhost.example.net
 ```
 * Check it
-```shell
+```bash
 $ getent hosts myhost.example.net
 $ ping myhost.example.net
 ```
