@@ -1,0 +1,3 @@
+It is better to have the names in ~/.hosts in the:
+	[name].[domain_name]
+format. This makes the resolution much faster.
