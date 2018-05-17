@@ -1,0 +1,1 @@
+- make bash completions complete host names from ~/.hosts
