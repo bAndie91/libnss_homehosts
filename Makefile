@@ -32,4 +32,6 @@ uninstall:
 	rm -f $(LINK_FOLDER)/$(LIB_NAME)
 .PHONY: test
 test:
-	getent hosts mark.net
+	echo 198.18.1.1 libnss-homehost.test.example.net >> ~/.hosts
+	getent -s homehosts hosts libnss-homehost.test.example.net
+	sed -e '/^198.18.1.1 libnss-homehost.test.example.net$/d' -i ~/.hosts
