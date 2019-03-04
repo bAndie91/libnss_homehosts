@@ -1,6 +1,6 @@
 # libnss_homehosts
 
-Linux NSS library supports `~/.hosts`, i.e. per-user hosts resolution.
+Linux NSS library supporting per-user hosts resolution using `${XDG_CONFIG_HOME}/hosts` or `~/.hosts`
 
 # Install
 
@@ -12,7 +12,7 @@ $ make
 ```bash
 $ sudo make install
 ```
-* Append NSS module to `/etc/nsswitch.conf`:
+* Preprend the NSS module to the hosts line of `/etc/nsswitch.conf`:
 ```text
 hosts: homehosts files dns
 ```
@@ -36,6 +36,7 @@ $ sudo make uninstall
 $ getent hosts myhost.example.net
 $ ping myhost.example.net
 ```
+Note that looking up the using `host` or `nslookup` will not work as these tools query DNS directly, sidestepping NSS.
 
 # Performance
 

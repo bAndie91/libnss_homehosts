@@ -31,11 +31,24 @@ typedef int bool;
 #define AFLEN(af) (((af) == AF_INET6) ? sizeof(struct in6_addr) : sizeof(struct in_addr))
 
 #define OPEN_HOME_HOSTS(fh) do { \
+	fh = NULL; \
+	cnt = -1; \
+	c = getenv("XDG_CONFIG_HOME"); \
+	if(c != NULL) \
+		cnt = snprintf(homehosts_file, PATH_MAX, "%s/hosts", c); \
 	c = getenv("HOME"); \
-	cnt = snprintf(homehosts_file, PATH_MAX, "%s/.hosts", c); \
-	if(cnt >= PATH_MAX) goto soft_error; \
-	fh = fopen(homehosts_file, "r"); \
-	if(fh == NULL) goto soft_error; \
+	if(cnt < 0) \
+		cnt = snprintf(homehosts_file, PATH_MAX, "%s/.config/hosts", c); \
+	if(cnt >= 0 && cnt < PATH_MAX) \
+		fh = fopen(homehosts_file, "r"); \
+	\
+	if(fh == NULL) \
+	{ \
+		cnt = snprintf(homehosts_file, PATH_MAX, "%s/.hosts", c); \
+		if(cnt >= PATH_MAX) goto soft_error; \
+		fh = fopen(homehosts_file, "r"); \
+		if(fh == NULL) goto soft_error; \
+	} \
 } while(0)
 
 
