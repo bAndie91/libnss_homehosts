@@ -1,4 +1,4 @@
-CFLAGS:=-O2 -Wall -Werror -Wpointer-arith -fPIC
+CFLAGS:=-O2 -Wall -Werror -Wpointer-arith -fPIC $(CFLAGS)
 INSTALL_FOLDER:=/lib/x86_64-linux-gnu
 VERSION:=2
 LIB_NAME:=libnss_homehosts.so

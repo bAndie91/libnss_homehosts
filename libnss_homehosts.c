@@ -101,12 +101,13 @@ int fscanfw(FILE* fh, const char* ffmt, char* buf)
 }
 
 
-#ifdef WITH_DUMPBUFFER
+#ifdef DEBUG
 void dumpbuffer(unsigned char* buf, size_t len)
 {
 	unsigned char* p = buf;
 	while(p - buf < len)
 	{
+		if(((p - buf) % 16) == 0) fprintf(stderr, "0x%04x %04d | ", p - buf, p - buf);
 		fprintf(stderr, "%02X %c ", p[0], isprint(p[0])?p[0]:'.');
 		if(((p - buf) % 16) == 15) fprintf(stderr, "\n");
 		else if(((p - buf) % 8) == 7) fprintf(stderr, "| ");
@@ -139,12 +140,12 @@ enum nss_status homehosts_gethostent_r(
 	bool store_aliases_phase, ipaddr_found = FALSE;
 	bool managed_fh = FALSE;
 	
-
+	
 	snprintf(ffmt_ip, sizeof(ffmt_ip), "%%%us%%1[\n]", INET6_ADDRSTRLEN); // generates: %46s%1[\n]
 	snprintf(ffmt_name, sizeof(ffmt_name), "%%%us%%1[\n]", _POSIX_HOST_NAME_MAX); // generates: %255s%1[\n]
 	
 	#ifdef DEBUG
-	warnx("%s(%s, ...)", __func__, query_name);
+	warnx("%s('%s', ..., af=%d)", __func__, query_name, query_af);
 	warnx("host.conf: inited = %u, flags = %u, multi = %u", _res_hconf.initialized, _res_hconf.flags, (_res_hconf.flags & HCONF_FLAG_MULTI)!=0);
 	memset(buffer, ' ', buflen);
 	#endif
@@ -357,7 +358,7 @@ enum nss_status homehosts_gethostent_r(
 	{
 		char* alias = (char*)(buffer + ridx);
 		#ifdef DEBUG
-		warnx("acnt %d, alias '%s'", acnt, alias);
+		warnx("alias count %d, alias '%s'", acnt, alias);
 		#endif
 		result->h_aliases[n] = alias;
 		ridx += strlen(alias) + 1;
@@ -365,10 +366,12 @@ enum nss_status homehosts_gethostent_r(
 	result->h_aliases[n] = NULL;
 	
 	#ifdef DEBUG
-	warnx("h_name -> %u\nh_aliases -> %u\nh_addrtype = %u\nh_length = %u\nh_addr_list -> %u", (void*)result->h_name - (void*)buffer, (void*)result->h_aliases - (void*)buffer, result->h_addrtype, result->h_length, (void*)result->h_addr_list - (void*)buffer);
-	dumpbuffer(buffer, buflen);
+	warnx("h_name -> offset %u\nh_aliases -> offset %u\nh_addrtype = %u\nh_length = %u\nh_addr_list -> offset %u", 
+		(char*)result->h_name - (char*)buffer, (char*)result->h_aliases - (char*)buffer, result->h_addrtype, result->h_length, (char*)result->h_addr_list - (char*)buffer);
+	dumpbuffer((unsigned char *)buffer, buflen);
 	#endif
 	
+	*h_errnop = 0;
 	*result_p = result;
 	return NSS_STATUS_SUCCESS;
 	
@@ -394,8 +397,19 @@ enum nss_status _nss_homehosts_gethostbyname_r(
 {
 	enum nss_status found_ipv6;
 	found_ipv6 = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, result_p, h_errnop, AF_INET6);
+	#ifdef DEBUG
+	warnx("homehosts_gethostent_r -> '%s' ipv6 errno=%d -> %d", name, *h_errnop, found_ipv6);
+	#endif
 	if(found_ipv6 == NSS_STATUS_NOTFOUND)
-		return homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, result_p, h_errnop, AF_INET);
+	{
+		enum nss_status found_ipv4;
+		warnx("ipv6 name not found, fall back to ipv4");
+		found_ipv4 = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, result_p, h_errnop, AF_INET);
+		#ifdef DEBUG
+		warnx("homehosts_gethostent_r -> '%s' ipv4 errno=%d -> %d", name, *h_errnop, found_ipv4);
+		#endif
+		return found_ipv4;
+	}
 	return found_ipv6;
 }
 
@@ -416,7 +430,12 @@ enum nss_status _nss_homehosts_gethostbyname2_r(
 	}
 	else
 	{
-		return homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, result_p, h_errnop, af);
+		enum nss_status found;
+		found = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, result_p, h_errnop, af);
+		#ifdef DEBUG
+		warnx("homehosts_gethostent_r -> '%s' af=%d h_errno=%d errno=%d -> %d", name, af, *h_errnop, errno, found);
+		#endif
+		return found;
 	}
 }
 
