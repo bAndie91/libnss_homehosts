@@ -123,7 +123,7 @@ enum nss_status homehosts_gethostent_r(
 	struct hostent * result,
 	char *buffer,
 	size_t buflen,
-	struct hostent ** result_p,
+	int *errnop,
 	int *h_errnop,
 	int query_af)
 {
@@ -334,8 +334,8 @@ enum nss_status homehosts_gethostent_r(
 	
 	if(cnt == 0)
 	{
+		*errnop = EINVAL;
 		*h_errnop = NO_ADDRESS;
-		*result_p = NULL;
 		return NSS_STATUS_NOTFOUND;
 	}
 	
@@ -371,19 +371,19 @@ enum nss_status homehosts_gethostent_r(
 	dumpbuffer((unsigned char *)buffer, buflen);
 	#endif
 	
+	*errnop = 0;
 	*h_errnop = 0;
-	*result_p = result;
 	return NSS_STATUS_SUCCESS;
 	
 	
 	buffer_error:
-	*h_errnop = ERANGE;
-	*result_p = NULL;
+	*errnop = ERANGE;
+	*h_errnop = NO_RECOVERY;
 	return NSS_STATUS_TRYAGAIN;
 	
 	soft_error:
-	*h_errnop = EAGAIN;
-	*result_p = NULL;
+	*errnop = EAGAIN;
+	*h_errnop = TRY_AGAIN;
 	return NSS_STATUS_TRYAGAIN;
 }
 
@@ -392,21 +392,21 @@ enum nss_status _nss_homehosts_gethostbyname_r(
 	struct hostent * result,
 	char *buffer,
 	size_t buflen,
-	struct hostent ** result_p,
+	int *errnop,
 	int *h_errnop)
 {
 	enum nss_status found_ipv6;
-	found_ipv6 = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, result_p, h_errnop, AF_INET6);
+	found_ipv6 = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, errnop, h_errnop, AF_INET6);
 	#ifdef DEBUG
-	warnx("homehosts_gethostent_r -> '%s' ipv6 errno=%d -> %d", name, *h_errnop, found_ipv6);
+	warnx("homehosts_gethostent_r -> '%s' ipv6 h_errno=%d -> %d", name, *h_errnop, found_ipv6);
 	#endif
 	if(found_ipv6 == NSS_STATUS_NOTFOUND)
 	{
 		enum nss_status found_ipv4;
 		warnx("ipv6 name not found, fall back to ipv4");
-		found_ipv4 = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, result_p, h_errnop, AF_INET);
+		found_ipv4 = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, errnop, h_errnop, AF_INET);
 		#ifdef DEBUG
-		warnx("homehosts_gethostent_r -> '%s' ipv4 errno=%d -> %d", name, *h_errnop, found_ipv4);
+		warnx("homehosts_gethostent_r -> '%s' ipv4 h_errno=%d -> %d", name, *h_errnop, found_ipv4);
 		#endif
 		return found_ipv4;
 	}
@@ -419,21 +419,21 @@ enum nss_status _nss_homehosts_gethostbyname2_r(
 	struct hostent * result,
 	char *buffer,
 	size_t buflen,
-	struct hostent ** result_p,
+	int *errnop,
 	int *h_errnop)
 {
 	if(af != AF_INET && af != AF_INET6)
 	{
-		*h_errnop = EAFNOSUPPORT;
-		*result_p = NULL;
+		*errnop = EAFNOSUPPORT;
+		*h_errnop = HOST_NOT_FOUND;
 		return NSS_STATUS_UNAVAIL;
 	}
 	else
 	{
 		enum nss_status found;
-		found = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, result_p, h_errnop, af);
+		found = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, errnop, h_errnop, af);
 		#ifdef DEBUG
-		warnx("homehosts_gethostent_r -> '%s' af=%d h_errno=%d errno=%d -> %d", name, af, *h_errnop, errno, found);
+		warnx("homehosts_gethostent_r -> '%s' af=%d h_errno=%d errno=%d -> %d", name, af, *h_errnop, *errnop, found);
 		#endif
 		return found;
 	}
@@ -446,10 +446,10 @@ enum nss_status _nss_homehosts_gethostbyaddr_r(
 	struct hostent * result,
 	char *buffer,
 	size_t buflen,
-	struct hostent ** result_p,
+	int *errnop,
 	int *h_errnop)
 {
-	return homehosts_gethostent_r(NULL, address, NULL, result, buffer, buflen, result_p, h_errnop, af);
+	return homehosts_gethostent_r(NULL, address, NULL, result, buffer, buflen, errnop, h_errnop, af);
 }
 
 
@@ -473,7 +473,8 @@ enum nss_status _nss_homehosts_gethostent_r(
 	struct hostent *result,
 	char *buffer,
 	size_t buflen,
-	int *errnop)
+	int *errnop,
+	int *h_errnop)
 {
 	if(sethost_fh == NULL)
 	{
@@ -481,9 +482,7 @@ enum nss_status _nss_homehosts_gethostent_r(
 		return NSS_STATUS_UNAVAIL;
 	}
 	
-	struct hostent** result_p = &result;
-	int* h_errnop = errnop;
-	return homehosts_gethostent_r(NULL, NULL, sethost_fh, result, buffer, buflen, result_p, h_errnop, 0);
+	return homehosts_gethostent_r(NULL, NULL, sethost_fh, result, buffer, buflen, errnop, h_errnop, 0);
 }
 
 enum nss_status _nss_homehosts_endhostent(void)
