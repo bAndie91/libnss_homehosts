@@ -5,9 +5,9 @@ LIB_NAME:=libnss_homehosts.so
 LIB_NAME_WITH_VERSION:=$(LIB_NAME).$(VERSION)
 
 .PHONY: all
-all: $(LIB_NAME)
+all: $(LIB_NAME_WITH_VERSION)
 
-$(LIB_NAME): libnss_homehosts.o
+$(LIB_NAME_WITH_VERSION): libnss_homehosts.o
 	$(CC) $(CFLAGS) -shared -o $@ $<
 
 libnss_homehosts.o: libnss_homehosts.c
