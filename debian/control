@@ -1,0 +1,12 @@
+Source: nss-envhosts
+Section: net
+Priority: optional
+Maintainer: Nikesh Bernardshaw <nbernardshaw@clearpath.ai>
+Build-Depends: debhelper (>=9)
+Standards-Version: 3.9.7
+
+Package: nss-envhosts
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, debconf
+Description: NSS hosts plugin for hostname resolution.
+ Linux NSS hosts plugin for user defined hostname resolution.

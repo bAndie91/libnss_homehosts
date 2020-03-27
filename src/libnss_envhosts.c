@@ -1,4 +1,3 @@
-
 #include <arpa/inet.h>
 #include <nss.h>
 #include <netdb.h>
@@ -30,25 +29,15 @@ typedef int bool;
 
 #define AFLEN(af) (((af) == AF_INET6) ? sizeof(struct in6_addr) : sizeof(struct in_addr))
 
-#define OPEN_HOME_HOSTS(fh) do { \
+#define OPEN_ENV_HOSTS(fh) do { \
 	fh = NULL; \
 	cnt = -1; \
-	c = getenv("XDG_CONFIG_HOME"); \
+	c = getenv("HOSTS_FILE"); \
 	if(c != NULL) \
-		cnt = snprintf(homehosts_file, PATH_MAX, "%s/hosts", c); \
-	c = getenv("HOME"); \
-	if(cnt < 0) \
-		cnt = snprintf(homehosts_file, PATH_MAX, "%s/.config/hosts", c); \
-	if(cnt >= 0 && cnt < PATH_MAX) \
-		fh = fopen(homehosts_file, "r"); \
-	\
-	if(fh == NULL) \
-	{ \
-		cnt = snprintf(homehosts_file, PATH_MAX, "%s/.hosts", c); \
-		if(cnt >= PATH_MAX) goto soft_error; \
-		fh = fopen(homehosts_file, "r"); \
-		if(fh == NULL) goto soft_error; \
-	} \
+		cnt = snprintf(envhosts_file, PATH_MAX, "%s", c); \
+	if(cnt < 0 || cnt >= PATH_MAX) goto soft_error; \
+	fh = fopen(envhosts_file, "r"); \
+	if(fh == NULL) goto soft_error; \
 } while(0)
 
 
@@ -116,7 +105,7 @@ void dumpbuffer(unsigned char* buf, size_t len)
 }
 #endif
 
-enum nss_status homehosts_gethostent_r(
+enum nss_status envhosts_gethostent_r(
 	const char *query_name,
 	const void *query_addr,
 	FILE* fh,
@@ -130,7 +119,7 @@ enum nss_status homehosts_gethostent_r(
 	size_t idx, ridx, addrstart;		// cursors in buffer space
 	struct ipaddr address;
 	long aliases_offset;
-	char homehosts_file[PATH_MAX+1];
+	char envhosts_file[PATH_MAX+1];
 	char ipbuf[INET6_ADDRSTRLEN+1];
 	char namebuf[_POSIX_HOST_NAME_MAX+1];
 	char ffmt_ip[10];	// fscanf format string
@@ -155,7 +144,7 @@ enum nss_status homehosts_gethostent_r(
 	if(fh == NULL)
 	{
 		managed_fh = TRUE;
-		OPEN_HOME_HOSTS(fh);
+		OPEN_ENV_HOSTS(fh);
 	}
 	
 	/* Copy requested name to canonical hostname */
@@ -387,7 +376,7 @@ enum nss_status homehosts_gethostent_r(
 	return NSS_STATUS_TRYAGAIN;
 }
 
-enum nss_status _nss_homehosts_gethostbyname_r(
+enum nss_status _nss_envhosts_gethostbyname_r(
 	const char *name,
 	struct hostent * result,
 	char *buffer,
@@ -396,24 +385,24 @@ enum nss_status _nss_homehosts_gethostbyname_r(
 	int *h_errnop)
 {
 	enum nss_status found_ipv6;
-	found_ipv6 = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, errnop, h_errnop, AF_INET6);
+	found_ipv6 = envhosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, errnop, h_errnop, AF_INET6);
 	#ifdef DEBUG
-	warnx("homehosts_gethostent_r -> '%s' ipv6 h_errno=%d -> %d", name, *h_errnop, found_ipv6);
+	warnx("envhosts_gethostent_r -> '%s' ipv6 h_errno=%d -> %d", name, *h_errnop, found_ipv6);
 	#endif
 	if(found_ipv6 == NSS_STATUS_NOTFOUND)
 	{
 		enum nss_status found_ipv4;
 		warnx("ipv6 name not found, fall back to ipv4");
-		found_ipv4 = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, errnop, h_errnop, AF_INET);
+		found_ipv4 = envhosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, errnop, h_errnop, AF_INET);
 		#ifdef DEBUG
-		warnx("homehosts_gethostent_r -> '%s' ipv4 h_errno=%d -> %d", name, *h_errnop, found_ipv4);
+		warnx("envhosts_gethostent_r -> '%s' ipv4 h_errno=%d -> %d", name, *h_errnop, found_ipv4);
 		#endif
 		return found_ipv4;
 	}
 	return found_ipv6;
 }
 
-enum nss_status _nss_homehosts_gethostbyname2_r(
+enum nss_status _nss_envhosts_gethostbyname2_r(
 	const char *name,
 	int af,
 	struct hostent * result,
@@ -431,15 +420,15 @@ enum nss_status _nss_homehosts_gethostbyname2_r(
 	else
 	{
 		enum nss_status found;
-		found = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, errnop, h_errnop, af);
+		found = envhosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, errnop, h_errnop, af);
 		#ifdef DEBUG
-		warnx("homehosts_gethostent_r -> '%s' af=%d h_errno=%d errno=%d -> %d", name, af, *h_errnop, *errnop, found);
+		warnx("envhosts_gethostent_r -> '%s' af=%d h_errno=%d errno=%d -> %d", name, af, *h_errnop, *errnop, found);
 		#endif
 		return found;
 	}
 }
 
-enum nss_status _nss_homehosts_gethostbyaddr_r(
+enum nss_status _nss_envhosts_gethostbyaddr_r(
 	const void *address,
 	socklen_t len,
 	int af,
@@ -449,19 +438,19 @@ enum nss_status _nss_homehosts_gethostbyaddr_r(
 	int *errnop,
 	int *h_errnop)
 {
-	return homehosts_gethostent_r(NULL, address, NULL, result, buffer, buflen, errnop, h_errnop, af);
+	return envhosts_gethostent_r(NULL, address, NULL, result, buffer, buflen, errnop, h_errnop, af);
 }
 
 
 static FILE* sethost_fh;
 
-enum nss_status _nss_homehosts_sethostent(void)
+enum nss_status _nss_envhosts_sethostent(void)
 {
-	char homehosts_file[PATH_MAX+1];
+	char envhosts_file[PATH_MAX+1];
 	int cnt;
 	char *c;
 	
-	OPEN_HOME_HOSTS(sethost_fh);
+	OPEN_ENV_HOSTS(sethost_fh);
 	return NSS_STATUS_SUCCESS;
 	
 	soft_error:
@@ -469,7 +458,7 @@ enum nss_status _nss_homehosts_sethostent(void)
 	return NSS_STATUS_TRYAGAIN;
 }
 
-enum nss_status _nss_homehosts_gethostent_r(
+enum nss_status _nss_envhosts_gethostent_r(
 	struct hostent *result,
 	char *buffer,
 	size_t buflen,
@@ -482,10 +471,10 @@ enum nss_status _nss_homehosts_gethostent_r(
 		return NSS_STATUS_UNAVAIL;
 	}
 	
-	return homehosts_gethostent_r(NULL, NULL, sethost_fh, result, buffer, buflen, errnop, h_errnop, 0);
+	return envhosts_gethostent_r(NULL, NULL, sethost_fh, result, buffer, buflen, errnop, h_errnop, 0);
 }
 
-enum nss_status _nss_homehosts_endhostent(void)
+enum nss_status _nss_envhosts_endhostent(void)
 {
 	if(sethost_fh == NULL)
 	{
