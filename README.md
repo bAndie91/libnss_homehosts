@@ -51,3 +51,7 @@ instead of
 in order to avoid _dns suffix-list_ expansion by libresolv when unneccessary.
 
 Refer to `ndots` option at resolv.conf(5).
+
+
+# issues
+Please submit issues via PR to some file `issue/TITLE.txt`.
