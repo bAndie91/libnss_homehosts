@@ -403,7 +403,9 @@ enum nss_status _nss_homehosts_gethostbyname_r(
 	if(found_ipv6 == NSS_STATUS_NOTFOUND)
 	{
 		enum nss_status found_ipv4;
+		#ifdef DEBUG
 		warnx("ipv6 name not found, fall back to ipv4");
+		#endif
 		found_ipv4 = homehosts_gethostent_r(name, NULL, NULL, result, buffer, buflen, errnop, h_errnop, AF_INET);
 		#ifdef DEBUG
 		warnx("homehosts_gethostent_r -> '%s' ipv4 h_errno=%d -> %d", name, *h_errnop, found_ipv4);
