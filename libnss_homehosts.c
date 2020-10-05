@@ -11,6 +11,7 @@
 #include <limits.h>
 #include <ctype.h>
 #include "res_hconf.h"
+#include "config.h"
 
 
 struct ipaddr {
