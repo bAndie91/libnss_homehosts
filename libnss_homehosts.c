@@ -19,7 +19,9 @@ struct ipaddr {
 	struct in6_addr ip6;
 };
 
+#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 202311L
 typedef int bool;
+#endif
 #define TRUE 1
 #define FALSE 0
 
